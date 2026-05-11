@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <script>
+        (async function (){
+            const tileUrl = "https://a.tiles.mapbox.com/v4/mapbox.mapbox-streets-v8/14/4823/6160.mvt"
+            const tile = await (await fetch(tileUrl)).text();
+            console.log(tile)
+        })();
+
+
+    </script>
+</body>
+</html>

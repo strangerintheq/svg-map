@@ -32,11 +32,3 @@ function interpolateGreatCircle(from, to, fraction) {
     let d = haversineDistance(from, to);
     return destination(from, b*asRadians, d * fraction)
 }
-
-function mercatorProject(lat) {
-
-}
-
-function mercatorUnProject(lat) {
-
-}

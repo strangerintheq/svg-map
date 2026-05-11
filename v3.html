@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name=”viewport” content=”width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;”/>
+    <meta charset="UTF-8">
+    <title>svg-map</title>
+</head>
+<body style="user-select:none;touch-action: none; margin: 0; overflow: hidden; height: 100vh">
+<script>
+    makeMap(document.body);
+
+    function makeMap(targetNode) {
+        let x = 0, y = 0, z = 18, a = 0, cx = 0, cy = 0;
+
+        let lat = 60, lon = 30, zoom = 1, heading = 15;
+
+        targetNode.innerHTML = `<svg>
+            <style>
+                .viewport {
+                    fill: none;
+                    stroke: red;
+                }
+            </style>
+            <g class="rotate">
+                <g class="translate">
+                    <g class="scale">
+                        <g class="basemap"></g>
+                        <g class="overlay"></g>
+                    </g>
+                </g>
+            </g>
+            <g class="viewport"></g>
+            <g class="touches"></g>
+        </svg>`;
+
+        const svg = targetNode.querySelector("svg");
+        const basemap = svg.querySelector(".basemap")
+        const touches = svg.querySelector(".touches")
+
+        let repaintRequested, w, h, viewport, tileSize;
+
+        requestRepaint();
+        addEventListener("resize", requestRepaint);
+
+        function repaint() {
+            resize();
+            updateViewport();
+            calcTiles();
+            drawTilesBounds()
+            repaintRequested = false;
+        }
+
+        function requestRepaint() {
+            if (repaintRequested)
+                return;
+            repaintRequested = true;
+            requestAnimationFrame(repaint)
+        }
+
+        function resize() {
+            w = targetNode.clientWidth;
+            h = targetNode.clientHeight;
+            tileSize = Math.min(w, h) / 4;
+            svg.setAttribute("viewBox", [-w / 2, -h / 2, w, h].toString());
+            svg.setAttribute("width", w + "px");
+            svg.setAttribute("height", h + "px");
+        }
+
+        function updateViewport() {
+            let pad = 190
+            let x0 = pad - w / 2;
+            let y0 = pad - h / 2;
+            let x1 = w / 2 - pad;
+            let y1 = h / 2 - pad;
+            viewport = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+            svg.querySelector(".viewport").innerHTML = asPath(viewport)
+        }
+
+        function asPath(pts) {
+            return `<path d="M${pts.join("L")}Z"></path>`;
+        }
+
+        function calcTiles() {
+            let tiles = [tile(-180, -90, 180, 90, 0, 0)];
+            for (let i = 1; i < zoom; i++)
+                tiles = tiles.map(subdivide).flat().filter(intersectsViewport);
+        }
+
+        function subdivide(tile) {
+            const {lat0, lon0, lat1, lon1, row, column} = tile;
+            const lat = (lat0 + lat1) / 2, lon = (lon0 + lon1) / 2;
+            const r = row * 2, c = column * 2;
+            return [
+                tile(lat0, lon0, lat0 + lat, lon0 + lon, r, c),
+                tile(),
+                tile(),
+                tile()
+            ]
+        }
+
+        function drawTilesBounds() {
+
+        }
+
+        function project(lat, lon) {
+            let x = 0, y = 0;
+            return {x, y}
+        }
+
+        function unProject(x, y) {
+            let lat = 0, lon = 0;
+            return {lat, lon}
+        }
+
+        function tile(lat0, lon0, lat1, lon1, row, column) {
+            return {lat0, lon0, lat1, lon1, row, column}
+        }
+
+        function intersectsViewport() {
+
+        }
+
+    }
+</script>
+
+</body>
+</html>

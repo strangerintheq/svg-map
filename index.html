@@ -7,11 +7,17 @@
     <script src="svgmap.js"></script>
 </head>
 <body>
-example<br>
 <div id="map1" style="width: 500px; height: 500px;display: inline-block"></div>
-<div id="map2" style="width: 500px; height: 500px;display: inline-block"></div>
+<div id="map2" style="width: 600px; height: 600px;display: inline-block"></div>
+<button onclick="osm()">osm</button>
+<button onclick="arcGis()">arcGis</button>
 <script>
+    let osmLoadFn = (z, x, y) => `https://a.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+    let arcGisLoadFn = (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+
     let map = svgMap(map1);
+
+    map.tiles(osmLoadFn)
     map.setCenter(60, 30.2, 10);
 
     map.add(`<polyline data-points='[[60,30.2],[60.1,30.2],[60,30.3]]'
@@ -19,10 +25,18 @@ example<br>
     map.add("<circle data-point='[60,30.2]' r='15'></circle>")
 
     map = svgMap(map2);
+    map.tiles(arcGisLoadFn)
     map.setCenter(60, 60.2, 3);
     map.add(`<polyline data-points='[[60,30.2],[60,130.2]]'
                 fill='none' stroke-width='2' stroke='red'></polyline>`)
 
+    function osm (){
+        map.tiles(osmLoadFn)
+    }
+
+    function arcGis (){
+        map.tiles(arcGisLoadFn)
+    }
 </script>
 </body>
 </html>

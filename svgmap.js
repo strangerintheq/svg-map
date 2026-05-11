@@ -1,5 +1,5 @@
 function svgMap(targetNode) {
-
+    let loadTile;
     const center = {lat: 0, lon: 0};
     const state = {center, heading: 0, zoom: 5};
 
@@ -245,7 +245,7 @@ function svgMap(targetNode) {
         let img = tilesCache[key];
         if (!img) {
             img = tilesCache[key] = document.createElementNS("http://www.w3.org/2000/svg", "image");
-            img.setAttribute("href", `https://tile.openstreetmap.de/${tz}/${tx}/${ty}.png`);
+            img.setAttribute("href", loadTile(tz,tx,ty) );
         }
         basemap.append(img);
         img.setAttribute("x", x - s / 2)
@@ -270,6 +270,11 @@ function svgMap(targetNode) {
     }
 
     return {
+        tiles(loadFn) {
+            loadTile = loadFn
+            tilesCache = {}
+            requestRepaint()
+        },
         state,
         requestRepaint,
         project,

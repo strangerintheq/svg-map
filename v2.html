@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name=”viewport” content=”width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;”/>
+    <meta charset="UTF-8">
+    <title>svg-map</title>
+</head>
+<body style="user-select:none;touch-action: none; margin: 0; overflow: hidden; height: 100vh">
+<script>
+    makeMap(document.body);
+
+    function makeMap(targetNode) {
+        let count = 0
+        const pointers = {}
+        let needRepaint = true
+        let viewport, w, h, x = 0, y = 0, z = 18, a = 0, cx = 0, cy = 0;
+        targetNode.innerHTML = `<svg>
+  <g id="basemap"></g>
+  <g id="viewport"></g>
+  <g id="touches"></g>
+</svg>`;
+
+        let svg = targetNode.querySelector("svg");
+
+        let vp = svg.querySelector("#viewport")
+
+        let basemap = svg.querySelector("#basemap")
+
+        let touches = svg.querySelector("#touches")
+
+        let start;
+
+        let tilesCache = {};
+        resize();
+
+
+        requestAnimationFrame(function animate(){
+            if (needRepaint) {
+                calcTiles();
+                needRepaint = false
+            }
+            requestAnimationFrame(animate)
+        })
+
+        function transform(p0, p1) {
+            if (p0 !== p1) {
+
+                if (!start) {
+                    start = {x, y, z, a}
+                }
+
+                let x0 = p0.x / 2 + p1.x / 2
+                let y0 = p0.y / 2 + p1.y / 2
+                let x1 = p0.ex / 2 + p1.ex / 2
+                let y1 = p0.ey / 2 + p1.ey / 2
+
+                let d0 = Math.hypot(p0.x - p1.x, p0.y - p1.y)
+                let d1 = Math.hypot(p0.ex - p1.ex, p0.ey - p1.ey);
+                let kz = d1 / d0
+
+                x = start.x - x0 / kz + x1 / kz;
+                y = start.y - y0 / kz + y1 / kz;
+
+                applyZoom(x0, y0, start.z, kz)
+
+                let a0 = Math.atan2(p1.y - p0.y, p1.x - p0.x)
+                let a1 = Math.atan2(p1.ey - p0.ey, p1.ex - p0.ex)
+                a = start.a + a1 - a0;
+
+                needRepaint = true
+
+            } else {
+                start = null
+            }
+        }
+
+        addEventListener("pointerdown", down)
+        addEventListener("pointermove", move)
+        addEventListener("pointerup", up)
+
+
+
+        function down(e) {
+            if (count === 2)
+                return
+            count++;
+            let x = e.clientX;
+            let y = e.clientY;
+            pointers[e.pointerId] = {
+                x, y, ex: x, ey: y
+            }
+            redrawPointers()
+        }
+
+        function move(e) {
+            let p = pointers[e.pointerId]
+            if (!p)
+                return
+            p.ex = e.clientX;
+            p.ey = e.clientY;
+
+            redrawPointers()
+
+        }
+
+        function redrawPointers() {
+            let html = ""
+            let v = Object.values(pointers)
+            let p0 = v[0]
+            let p1 = v[1] || p0
+            transform(p0, p1)
+            if (p0) {
+                html += circle(p0.ex, p0.ey, 33)
+                html += circle(p1.ex, p1.ey, 33)
+                html += circle(p0.ex / 2 + p1.ex / 2, p0.ey / 2 + p1.ey / 2, 10)
+            }
+            touches.innerHTML = html;
+        }
+
+        function circle(x, y, r) {
+            return `
+ <circle r="${r}" cx="${x - innerWidth / 2}" cy="${y - innerHeight / 2}"> </circle>
+ `
+        }
+
+        function up(e) {
+            if (!pointers[e.pointerId])
+                return
+            count--;
+            delete pointers[e.pointerId]
+            redrawPointers()
+        }
+
+        function resize() {
+
+            w = targetNode.clientWidth;
+            h = targetNode.clientHeight;
+            let pad = 120
+            viewport = {left: -w / 2 + pad, top: -h / 2 + pad, right: w / 2 - pad, bottom: h / 2 - pad}
+            svg.setAttribute("viewBox", [-w / 2, -h / 2, w, h].toString());
+            svg.setAttribute("width", w + "px");
+            svg.setAttribute("height", h + "px");
+
+            vp.innerHTML = ""
+            vp.appendChild(asRect(viewport))
+
+        }
+
+
+
+        function tile(x, y, s, tz, tx, ty) {
+            return {x, y, s, tz, tx, ty}
+        }
+
+        function subdivide({x, y, s, tz, tx, ty}) {
+
+            let d = s / 2, t = d / 2, TZ = tz + 1,
+                TX = tx * 2, TY = ty * 2;
+            return [
+                tile(x - t, y - t, d, TZ, TX, TY),
+                tile(x + t, y - t, d, TZ, TX + 1, TY),
+                tile(x + t, y + t, d, TZ, TX + 1, TY + 1),
+                tile(x - t, y + t, d, TZ, TX, TY + 1)
+            ]
+
+        }
+
+        function inViewport({x, y, s}) {
+
+            return x + s / 2 > viewport.left
+                && x - s / 2 < viewport.right
+                && y + s / 2 > viewport.top
+                && y - s / 2 < viewport.bottom
+
+        }
+
+        function calcTiles() {
+
+            basemap.innerHTML = ""
+            let s = w / 2 * z;
+            let tiles = [tile(x, y, s, 0, 0, 0)]
+            for (let i = 1; i < Math.log2(z); i++)
+                tiles = tiles.map(subdivide).flat().filter(inViewport);
+            tiles.forEach(drawTile)
+
+
+            let actualTilesKeys = tiles.map(tileKey)
+// console.log(actualTilesKeys)
+            Object.keys(tilesCache)
+                .filter(key => !actualTilesKeys.includes(key))
+                .forEach(key => tilesCache[key] = null)
+            document.title = Object.keys(tilesCache).length
+            let dx = 0, dy = 0
+            let p = Object.values(pointers)
+            if (p[1]) {
+                dx = p[0].ex/2 + p[1].ex/2 - innerWidth/2
+                dy = p[0].ey/2 + p[1].ey/2 - innerHeight/2
+            }
+            basemap.setAttribute("transform", `translate(${dx},${dy}) rotate(${a/Math.PI*180}) translate(${-dx},${-dy})`)
+        }
+
+        function tileKey({tx, ty, tz}) {
+            return `x${tx}y${ty}z${tz}`;
+        }
+
+        function updatePosition(node, x, y, s) {
+
+            node.setAttribute("x", x - s / 2)
+            node.setAttribute("y", y - s / 2)
+            node.setAttribute("width", s)
+            node.setAttribute("height", s)
+
+        }
+
+        function drawTile(tile) {
+
+            let {x, y, s, tx, ty, tz} = tile;
+            let key = tileKey(tile);
+            let img = tilesCache[key];
+            if (!img) {
+                img = tilesCache[key] = document.createElementNS("http://www.w3.org/2000/svg", "image");
+                img.setAttribute("href", `https://tile.openstreetmap.org/${tz}/${tx}/${ty}.png`);
+            }
+            basemap.append(img);
+            updatePosition(img, x, y, s);
+            let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("stroke", `black`);
+            rect.setAttribute("fill", `none`);
+            updatePosition(rect, x, y, s);
+            basemap.append(rect);
+
+        }
+
+        function asRect(vp) {
+
+            let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+            rect.setAttribute("stroke", `red`);
+            rect.setAttribute("stroke-width", 2)
+            rect.setAttribute("fill", `none`);
+            rect.setAttribute("x", vp.left)
+            rect.setAttribute("y", vp.top)
+            rect.setAttribute("width", vp.right - vp.left)
+            rect.setAttribute("height", vp.bottom - vp.top)
+            return rect
+
+        }
+
+        addEventListener("wheel", e => {
+            applyZoom(e.clientX, e.clientY, z, e.deltaY < 0 ? 1.1 : 0.9)
+            needRepaint = true
+        })
+
+        function applyZoom(x0, y0, startZ, kz) {
+            let hw = innerWidth / 2
+            let hh = innerHeight / 2
+            let r = Math.atan2(y - y0 + hh, x - x0 + hw)
+            let d = Math.hypot(x - x0 + hw, y - y0 + hh) * kz
+            x = Math.cos(r) * d + x0 - hw
+            y = Math.sin(r) * d + y0 - hh
+            z = Math.max(1, startZ * kz);
+        }
+
+    }
+</script>
+
+</body>
+</html>
