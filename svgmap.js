@@ -1,18 +1,18 @@
 function svgMap(targetNode) {
     let loadTile;
     const center = {lat: 0, lon: 0};
-    const state = {center, heading: 0, zoom: 5};
-
-    let z = 5, a = 0;
-    let tilesCache = {}, repaintRequested, tileSize, viewport, w, h, x = 0, y = 0;
+    const state = {center, heading: 150, zoom: 5};
+    const rotationTmp = {cos: 0, sin: 0};
+    let tilesCache = {}, repaintRequested, tileSize, viewport, w, h, x = 0, y = 0, z = 5;
     let svg, basemap, overlay, tmp;
     init()
 
     function init() {
         targetNode.innerHTML = `<svg>
-            <g class="basemap"></g>
-            <g class="overlay"></g>
+            <g class="basemap" transform="rotate(${state.heading})"></g>
+            <g class="overlay" transform="rotate(${state.heading})"></g>
             <g class="tmp"></g>
+            <rect class="debug" fill="none" stroke="red"></rect>
         </svg>`;
         targetNode.style.touchAction = "none";
         svg = targetNode.querySelector("svg");
@@ -83,7 +83,7 @@ function svgMap(targetNode) {
             let p1 = v[1] || p0;
             if (p0) {
                 if (touchCfgChanged) {
-                    start = {x, y, z, a};
+                    start = {x, y, z, a: state.heading};
                     touchCfgChanged = false;
                     Object.values(pointers).forEach(p => {
                         p.x = p.ex;
@@ -94,7 +94,7 @@ function svgMap(targetNode) {
                 let y0 = p0.y / 2 + p1.y / 2;
                 let x1 = p0.ex / 2 + p1.ex / 2;
                 let y1 = p0.ey / 2 + p1.ey / 2;
-                if (p0 !== p1) {
+                if (p0 !== p1) { // multi touch
                     let d0 = hypot(p0.x - p1.x, p0.y - p1.y);
                     let d1 = hypot(p0.ex - p1.ex, p0.ey - p1.ey);
                     let kz = d1 / d0;
@@ -103,10 +103,13 @@ function svgMap(targetNode) {
                     applyZoom(x0, y0, start.z, kz);
                     let a0 = atan2(p1.y - p0.y, p1.x - p0.x);
                     let a1 = atan2(p1.ey - p0.ey, p1.ex - p0.ex);
-                    a = start.a + a1 - a0;
-                } else {
-                    x = start.x - x0 + x1;
-                    y = start.y - y0 + y1;
+                    state.heading = start.a + a1 - a0;
+                } else { // mouse or single touch
+                    let dx = x1-x0
+                    let dy = y1-y0
+                    let a = state.heading / 180 * Math.PI
+                    x = start.x + cos(a)*dx + sin(a)*dy;
+                    y = start.y - sin(a)*dx + cos(a)*dy;
                 }
                 requestRepaint()
             } else {
@@ -186,22 +189,37 @@ function svgMap(targetNode) {
     function resize() {
         w = targetNode.clientWidth;
         h = targetNode.clientHeight;
-        tileSize = max(w, h) / 2;
-        let pad = 0;
-        viewport = {left: -w / 2 + pad, top: -h / 2 + pad, right: w / 2 - pad, bottom: h / 2 - pad};
+        tileSize = 128;
+        let pad = 100;
+        viewport = {
+            left: -w / 2 + pad,
+            top: -h / 2 + pad,
+            right: w / 2 - pad,
+            bottom: h / 2 - pad,
+            width: w - pad*2,
+            height: h-pad*2
+        };
         svg.setAttribute("viewBox", [-w / 2, -h / 2, w, h].toString());
         svg.setAttribute("width", w + "px");
         svg.setAttribute("height", h + "px");
         setCenter(center.lat, center.lon);
+        let rect = svg.querySelector(".debug");
+        rect.setAttribute("width" , w - pad*2)
+        rect.setAttribute("height" , h - pad*2)
+        rect.setAttribute("x", viewport.left)
+        rect.setAttribute("y", viewport.top)
     }
 
     function calcTiles() {
         basemap.innerHTML = "";
+        let a = - state.heading / 180 * Math.PI
+        rotationTmp.cos = Math.cos(a);
+        rotationTmp.sin = Math.sin(a);
         let s = tileSize * z;
         let tiles = [tile(x, y, s, 0, 0, 0)];
-        for (let i = 1; i < log2(z) - 1; i++)
+        for (let i = 1; i < log2(z) - 0; i++)
             tiles = tiles.map(subdivide).flat().filter(inViewport);
-        tiles = tiles.concat(tiles.map(subdivide).flat().filter(inViewport))
+        // tiles = tiles.concat(tiles.map(subdivide).flat().filter(inViewport))
         tiles.forEach(drawTile);
         let actualTilesKeys = tiles.map(tileKey);
 
@@ -227,11 +245,57 @@ function svgMap(targetNode) {
             ];
         }
 
+        /**
+         * Checks if two oriented rectangles intersect using SAT.
+         * @param {Object} r1 { x, y, w, h, sin, cos }
+         * @param {Object} r2 { x, y, w, h, sin, cos }
+         */
+        function rectsIntersect(r1, r2) {
+            const getVertices = (r) => {
+                const { x, y, w, h, sin, cos } = r;
+                const hw = w / 2, hh = h / 2;
+
+                return [
+                    { x: x + (-hw * cos - -hh * sin), y: y + (-hw * sin + -hh * cos) },
+                    { x: x + ( hw * cos - -hh * sin), y: y + ( hw * sin + -hh * cos) },
+                    { x: x + ( hw * cos -  hh * sin), y: y + ( hw * sin +  hh * cos) },
+                    { x: x + (-hw * cos -  hh * sin), y: y + (-hw * sin +  hh * cos) }
+                ];
+            };
+
+            const getAxes = (v) => [
+                { x: v[1].x - v[0].x, y: v[1].y - v[0].y },
+                { x: v[2].x - v[1].x, y: v[2].y - v[1].y }
+            ];
+
+            const v1 = getVertices(r1), v2 = getVertices(r2);
+            const axes = [...getAxes(v1), ...getAxes(v2)];
+
+            for (let axis of axes) {
+                // Project both rects onto the axis
+                const project = (vertices, a) => {
+                    const dots = vertices.map(v => v.x * a.x + v.y * a.y);
+                    return { min: Math.min(...dots), max: Math.max(...dots) };
+                };
+
+                const p1 = project(v1, axis);
+                const p2 = project(v2, axis);
+
+                // If there's no overlap on any axis, they don't intersect
+                if (p1.max < p2.min || p2.max < p1.min) return false;
+            }
+            return true;
+        }
+
+
         function inViewport({x, y, s}) {
-            return x + s / 2 > viewport.left
-                && x - s / 2 < viewport.right
-                && y + s / 2 > viewport.top
-                && y - s / 2 < viewport.bottom;
+            let o1 = { // tile
+                x, y, w:s, h:s, cos:1, sin:0 // zero rotation
+            }
+            let o2 = { // viewport
+                x:0, y:0, w:viewport.width, h:viewport.height,...rotationTmp
+            }
+            return rectsIntersect(o1, o2);
         }
     }
 
@@ -248,10 +312,11 @@ function svgMap(targetNode) {
             img.setAttribute("href", loadTile(tz,tx,ty) );
         }
         basemap.append(img);
-        img.setAttribute("x", x - s / 2)
-        img.setAttribute("y", y - s / 2)
-        img.setAttribute("width", s)
-        img.setAttribute("height", s)
+        img.setAttribute("x", x - s / 2+1)
+        img.setAttribute("y", y - s / 2+1)
+        img.setAttribute("width", s-2)
+        img.setAttribute("height", s-2)
+
     }
 
     function requestRepaint() {
