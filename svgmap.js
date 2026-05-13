@@ -1,23 +1,43 @@
 function svgMap(targetNode) {
+    const debug = {
+        tilePad:0,
+        viewportPad: 0
+    }
     let loadTile;
+    let rasterizerFn;
     const center = {lat: 0, lon: 0};
-    const state = {center, heading: 150, zoom: 5};
-    const rotationTmp = {cos: 0, sin: 0};
-    let tilesCache = {}, repaintRequested, tileSize, viewport, w, h, x = 0, y = 0, z = 5;
-    let svg, basemap, overlay, tmp;
+    const state = {center, heading: 0, zoom: 5};
+    const rotationTmp = {
+        cos: 1,
+        sin: 0,
+        applyRotation(x, y, sign = 1) {
+            return [
+                this.cos*x*sign + this.sin*y*sign,
+                -this.sin*x*sign + this.cos*y*sign,
+            ]
+        }
+    };
+    let tilesCache = {}, repaintRequested, tileSize=256, viewport, w, h, x = 0, y = 0, z = 5;
+    let svg, basemap, overlay, tmp, gui;
+    let clickCallbackFn;
     init()
-
     function init() {
-        targetNode.innerHTML = `<svg>
-            <g class="basemap" transform="rotate(${state.heading})"></g>
-            <g class="overlay" transform="rotate(${state.heading})"></g>
+        targetNode.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr">
+        <svg style="grid-column: 1; grid-row: 1">
+            <g class="basemap"></g>
+            <g class="overlay"></g>
             <g class="tmp"></g>
             <rect class="debug" fill="none" stroke="red"></rect>
-        </svg>`;
+        </svg>
+        <div class="gui" style="grid-column: 1; grid-row: 1;pointer-events: none"></div>
+        </div>
+        `;
         targetNode.style.touchAction = "none";
         svg = targetNode.querySelector("svg");
         basemap = svg.querySelector(".basemap");
         overlay = svg.querySelector(".overlay");
+        gui = targetNode.querySelector(".gui");
         tmp = svg.querySelector(".tmp");
         addEventListener("resize", resize);
         resize();
@@ -27,6 +47,21 @@ function svgMap(targetNode) {
 
     function interaction() {
         let start, count = 0, pointers = {}, touchCfgChanged = false, listenersActivated = false;
+        svg.addEventListener("pointerdown", (e0) => {
+            if (!clickCallbackFn)
+                return
+            const up = (e1) => {
+                if (Math.hypot(e0.offsetX - e1.offsetX, e0.offsetY - e1.offsetY) < 3){
+                    let x = e1.offsetX - w / 2;
+                    let y = e1.offsetY - h / 2;
+                    let p = rotationTmp.applyRotation(x, y)
+                    clickCallbackFn(unProject(...p))
+                }
+                svg.removeEventListener("pointerup", up)
+            }
+            svg.addEventListener("pointerup", up)
+
+        });
         svg.addEventListener("pointerdown", down);
         svg.addEventListener("wheel", e => {
             e.preventDefault()
@@ -121,11 +156,13 @@ function svgMap(targetNode) {
         function applyZoom(x0, y0, startZ, kz) {
             if (startZ * kz > 2 ** 20 || startZ * kz < 5)
                 return
-            let hw = w / 2, hh = h / 2;
-            let r = atan2(y - y0 + hh, x - x0 + hw);
-            let d = hypot(x - x0 + hw, y - y0 + hh) * kz;
-            x = cos(r) * d + x0 - hw;
-            y = sin(r) * d + y0 - hh;
+            x0 -= w / 2;
+            y0 -= h / 2;
+            [x0, y0] = rotationTmp.applyRotation(x0,y0)
+            let r = atan2(y - y0, x - x0);
+            let d = hypot(x - x0 , y - y0 ) * kz;
+            x = cos(r) * d + x0 ;
+            y = sin(r) * d + y0 ;
             z = startZ * kz;
             updateCenter()
             requestRepaint()
@@ -139,6 +176,10 @@ function svgMap(targetNode) {
     }
 
     function repaint() {
+        basemap.innerHTML = "";
+        const a = state.heading / 180 * Math.PI
+        rotationTmp.cos = Math.cos(a);
+        rotationTmp.sin = Math.sin(a);
         calcTiles();
         calcOverlay();
         repaintRequested = false;
@@ -189,37 +230,34 @@ function svgMap(targetNode) {
     function resize() {
         w = targetNode.clientWidth;
         h = targetNode.clientHeight;
-        tileSize = 128;
-        let pad = 100;
         viewport = {
-            left: -w / 2 + pad,
-            top: -h / 2 + pad,
-            right: w / 2 - pad,
-            bottom: h / 2 - pad,
-            width: w - pad*2,
-            height: h-pad*2
+            left: -w / 2 + debug.viewportPad,
+            top: -h / 2 + debug.viewportPad,
+            right: w / 2 - debug.viewportPad,
+            bottom: h / 2 - debug.viewportPad,
+            width: w - debug.viewportPad*2,
+            height: h-debug.viewportPad*2
         };
         svg.setAttribute("viewBox", [-w / 2, -h / 2, w, h].toString());
         svg.setAttribute("width", w + "px");
         svg.setAttribute("height", h + "px");
         setCenter(center.lat, center.lon);
-        let rect = svg.querySelector(".debug");
-        rect.setAttribute("width" , w - pad*2)
-        rect.setAttribute("height" , h - pad*2)
-        rect.setAttribute("x", viewport.left)
-        rect.setAttribute("y", viewport.top)
+        if (debug.viewportPad) {
+            let rect = svg.querySelector(".debug");
+            rect.setAttribute("width" , w - debug.viewportPad*2)
+            rect.setAttribute("height" , h - debug.viewportPad*2)
+            rect.setAttribute("x", viewport.left)
+            rect.setAttribute("y", viewport.top)
+        }
     }
 
     function calcTiles() {
-        basemap.innerHTML = "";
-        let a = - state.heading / 180 * Math.PI
-        rotationTmp.cos = Math.cos(a);
-        rotationTmp.sin = Math.sin(a);
+
         let s = tileSize * z;
         let tiles = [tile(x, y, s, 0, 0, 0)];
-        for (let i = 1; i < log2(z) - 0; i++)
+        for (let i = 1; i < log2(z) - 1; i++)
             tiles = tiles.map(subdivide).flat().filter(inViewport);
-        // tiles = tiles.concat(tiles.map(subdivide).flat().filter(inViewport))
+        tiles = tiles.concat(tiles.map(subdivide).flat().filter(inViewport))
         tiles.forEach(drawTile);
         let actualTilesKeys = tiles.map(tileKey);
 
@@ -247,10 +285,10 @@ function svgMap(targetNode) {
 
         function inViewport({x, y, s}) {
             let o1 = { // tile
-                x, y, w:s, h:s, cos:1, sin:0 // zero rotation
+                x, y, w: s, h: s, cos: 1, sin: 0 // zero rotation
             }
             let o2 = { // viewport
-                x:0, y:0, w:viewport.width, h:viewport.height,...rotationTmp
+                x: 0, y: 0, w: viewport.width, h: viewport.height, cos: rotationTmp.cos, sin: -rotationTmp.sin
             }
             return rectsIntersect(o1, o2);
         }
@@ -265,14 +303,13 @@ function svgMap(targetNode) {
         let key = tileKey(tile);
         let img = tilesCache[key];
         if (!img) {
-            img = tilesCache[key] = document.createElementNS("http://www.w3.org/2000/svg", "image");
-            img.setAttribute("href", loadTile(tz,tx,ty) );
+            img = tilesCache[key] = rasterizerFn(loadTile(tz, tx, ty));
         }
         basemap.append(img);
-        img.setAttribute("x", x - s / 2+1)
-        img.setAttribute("y", y - s / 2+1)
-        img.setAttribute("width", s-2)
-        img.setAttribute("height", s-2)
+        img.setAttribute("x", x - s / 2+debug.tilePad)
+        img.setAttribute("y", y - s / 2+debug.tilePad)
+        img.setAttribute("width", s-debug.tilePad*2)
+        img.setAttribute("height", s-debug.tilePad*2)
 
     }
 
@@ -285,15 +322,29 @@ function svgMap(targetNode) {
         center.lat = newLat
         center.lon = newLon;
         z = 2 ** zoom;
-        let [dx, dy] = project(center.lat, center.lon);
+        let [dx, dy] = project(newLat, newLon);
         x -= dx;
         y -= dy;
         requestRepaint()
     }
 
+    function setHeading(heading) {
+        state.heading = heading
+        basemap.setAttribute("transform", `rotate(${heading})`)
+        overlay.setAttribute("transform", `rotate(${heading})`)
+        requestRepaint()
+    }
+
+    function imageRasterizer(url) {
+        let img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        img.setAttribute("href", url);
+        return img
+    }
+
     return {
-        tiles(loadFn) {
+        tiles(loadFn, rasterizer = imageRasterizer) {
             loadTile = loadFn
+            rasterizerFn = rasterizer
             tilesCache = {}
             requestRepaint()
         },
@@ -301,12 +352,19 @@ function svgMap(targetNode) {
         requestRepaint,
         project,
         unProject,
+        onClick(clickCallback) {
+            clickCallbackFn = clickCallback;
+        },
         setCenter,
+        setHeading,
         add(node) {
             tmp.innerHTML = node;
             node = tmp.querySelector("*")
             overlay.append(node);
             requestRepaint()
+        },
+        addGui(node) {
+            gui.innerHTML += node
         }
     }
 }

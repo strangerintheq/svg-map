@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="math.js"></script>
+    <script src="svgmap.js"></script>
+</head>
+<body style="margin: 0; overflow: hidden">
+<div id="map" style="width: 100vw; height: 100vh;"></div>
+<script>
+    let osmLoadFn = (z, x, y) => `https://a.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+    let arcGisLoadFn = (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+    let mvt = (z, x, y) => `https://api.maptiler.com/tiles/v3/${z}/${x}/${y}.pbf?key=`
+
+    function vectorRasterizer(url) {
+        let img = document.createElement("canvas")
+        fetch(url).then(r => r.arrayBuffer()).then(ab => {
+            console.log(new Uint8Array(ab))
+        })
+        return img;
+    }
+
+    map = svgMap(map);
+    // map.tiles(mvt, vectorRasterizer)
+    map.tiles(arcGisLoadFn)
+    map.setCenter(60, 30.2, 5);
+    map.setHeading(45)
+    map.add(`<polyline data-points='[[60,30.2],[60,130.2]]' fill='none' stroke-width='2' stroke='red'></polyline>`)
+    map.onClick((ll) => {
+        console.log(ll);
+        map.add(`<circle data-point='[${ll}]' r='5' fill="red"></circle>`)
+    })
+    map.addGui(`<div style="display: inline-block; pointer-events: all">
+    <button onclick="map.tiles(osmLoadFn)">osm</button>
+    <button onclick="map.tiles(arcGisLoadFn)">arcGis</button>
+  </div>`)
+</script>
+</body>
+</html>
