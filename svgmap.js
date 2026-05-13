@@ -5,6 +5,7 @@ function svgMap(targetNode) {
     }
     let loadTile;
     let rasterizerFn;
+    let maxZoomLvl=15;
     const center = {lat: 0, lon: 0};
     const state = {center, heading: 0, zoom: 5};
     const rotationTmp = {
@@ -255,9 +256,9 @@ function svgMap(targetNode) {
 
         let s = tileSize * z;
         let tiles = [tile(x, y, s, 0, 0, 0)];
-        for (let i = 1; i < log2(z) - 1; i++)
+        for (let i = 1; i < log2(z) &&  i < maxZoomLvl ; i++)
             tiles = tiles.map(subdivide).flat().filter(inViewport);
-        tiles = tiles.concat(tiles.map(subdivide).flat().filter(inViewport))
+        // tiles = tiles.concat(tiles.map(subdivide).flat().filter(inViewport))
         tiles.forEach(drawTile);
         let actualTilesKeys = tiles.map(tileKey);
 
@@ -342,9 +343,10 @@ function svgMap(targetNode) {
     }
 
     return {
-        tiles(loadFn, rasterizer = imageRasterizer) {
+        tiles(loadFn, maxZoom=15, rasterizer = imageRasterizer) {
             loadTile = loadFn
             rasterizerFn = rasterizer
+            maxZoomLvl = maxZoom
             tilesCache = {}
             requestRepaint()
         },

@@ -5,25 +5,98 @@
     <title>Title</title>
     <script src="math.js"></script>
     <script src="svgmap.js"></script>
+    <script src="private.js"></script>
+    <script src="pbf.js"></script>
+    <script src="point.js"></script>
+    <script src="vector-tile.js"></script>
 </head>
 <body style="margin: 0; overflow: hidden">
 <div id="map" style="width: 100vw; height: 100vh;"></div>
 <script>
     let osmLoadFn = (z, x, y) => `https://a.tile.openstreetmap.org/${z}/${x}/${y}.png`;
     let arcGisLoadFn = (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
-    let mvt = (z, x, y) => `https://api.maptiler.com/tiles/v3/${z}/${x}/${y}.pbf?key=`
+    let mvt = (z, x, y) => `https://api.maptiler.com/tiles/v3/${z}/${x}/${y}.pbf?key=${maptiler_api_key}`
 
     function vectorRasterizer(url) {
-        let img = document.createElement("canvas")
-        fetch(url).then(r => r.arrayBuffer()).then(ab => {
-            console.log(new Uint8Array(ab))
-        })
+        let size = 256
+        let img = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+        img.setAttribute("width", size)
+        img.setAttribute("height", size)
+        img.setAttribute("viewBox", "0,0,256,256")
+
+        let colors = {
+            crop: "#ffffff",
+            snow: "#f0fffd",
+            ice: "#d9edff",
+            ocean: "#93d2ee",
+            lake: "#93d2ee",
+            // grass: "#b4e0a4",
+            // scrub: "#a4e0c0",
+            // tree: "#a4e0c0",
+            // forest: "#a4e0c0",
+            residential: "#e0d8a4",
+            national_park: "#cae0a4",
+            wood: "#cae0a4",
+            grass: "#cae0a4",
+            farmland: "#e0cfa4",
+            wetland: "#ace0a4",
+            sand: "#e0d4a4",
+            rock: "#cec386",
+            // protected_area: "#ffdbdb",
+        }
+
+        let layers = {
+            transportation: "#9bc7d7",
+            park: "#cae0a4",
+            water: "#93d2ee",
+            landuse: "#e0d8a450",
+            building: "#c5c5c5"
+        }
+
+        function getColor(layerName, feature){
+            let cl = feature._values[feature._keys.indexOf("class")];
+            let col = layers[layerName]
+            if (col)
+                return col
+            col = colors[cl]
+            if (col) {
+                return col
+            }
+            return "magenta"
+        }
+
+        fetch(url).then(r => r.arrayBuffer()).then(rawResponse => {
+            let tileData = ""
+            let pbf = new Pbf(rawResponse);
+            let tile = new VectorTile(pbf);
+            for (let layerName in tile.layers) {
+                let layer = tile.layers[layerName];
+                let k = size / layer.extent;
+                for (let i = 0; i < layer.length; i++) {
+                    let feature = layer.feature(i)
+                    let geom = feature.loadGeometry();
+                    if (feature.toGeoJSON().geometry.type === "MultiPolygon" || feature.toGeoJSON().geometry.type === "Polygon") {
+                        let color = getColor(layerName, feature)
+                        geom.forEach(ring => {
+                            tileData += `<path fill="${color}" d="${'M' + ring.map(({x,y}) => [(x * k).toFixed(2), (y * k).toFixed(1)]).join("L") + "Z"}"></path>`
+                        })
+                    }
+                    if (feature.toGeoJSON().geometry.type === "Point") {
+                        let x = geom[0][0].x*k
+                        let y = geom[0][0].y*k
+                        //tileData += `<circle r=2 cx="${x}" cy="${y}"></circle>`
+                    }
+                }
+            }
+           img.innerHTML += tileData
+        });
+
         return img;
     }
 
     map = svgMap(map);
-    // map.tiles(mvt, vectorRasterizer)
-    map.tiles(arcGisLoadFn)
+    map.tiles(mvt, 15, vectorRasterizer)
+    // map.tiles(arcGisLoadFn)
     map.setCenter(60, 30.2, 5);
     map.setHeading(45)
     map.add(`<polyline data-points='[[60,30.2],[60,130.2]]' fill='none' stroke-width='2' stroke='red'></polyline>`)
@@ -32,7 +105,7 @@
         map.add(`<circle data-point='[${ll}]' r='5' fill="red"></circle>`)
     })
     map.addGui(`<div style="display: inline-block; pointer-events: all">
-    <button onclick="map.tiles(osmLoadFn)">osm</button>
+    <button onclick="map.tiles(osmLoadFn, 20)">osm</button>
     <button onclick="map.tiles(arcGisLoadFn)">arcGis</button>
   </div>`)
 </script>

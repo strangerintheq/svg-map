@@ -1,0 +1,1 @@
+const maptiler_api_key = 'brAZ60bpO61pwE6kxQBU\n'
