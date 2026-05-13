@@ -28,7 +28,48 @@ function destination(from, bearing, distance) {
 
 function interpolateGreatCircle(from, to, fraction) {
     let b = bearing(from, to);
-    // debugger
     let d = haversineDistance(from, to);
     return destination(from, b*asRadians, d * fraction)
+}
+
+/**
+ * Checks if two oriented rectangles intersect using SAT.
+ * @param {Object} r1 { x, y, w, h, sin, cos }
+ * @param {Object} r2 { x, y, w, h, sin, cos }
+ */
+function rectsIntersect(r1, r2) {
+    const getVertices = (r) => {
+        const { x, y, w, h, sin, cos } = r;
+        const hw = w / 2, hh = h / 2;
+
+        return [
+            { x: x + (-hw * cos - -hh * sin), y: y + (-hw * sin + -hh * cos) },
+            { x: x + ( hw * cos - -hh * sin), y: y + ( hw * sin + -hh * cos) },
+            { x: x + ( hw * cos -  hh * sin), y: y + ( hw * sin +  hh * cos) },
+            { x: x + (-hw * cos -  hh * sin), y: y + (-hw * sin +  hh * cos) }
+        ];
+    };
+
+    const getAxes = (v) => [
+        { x: v[1].x - v[0].x, y: v[1].y - v[0].y },
+        { x: v[2].x - v[1].x, y: v[2].y - v[1].y }
+    ];
+
+    const v1 = getVertices(r1), v2 = getVertices(r2);
+    const axes = [...getAxes(v1), ...getAxes(v2)];
+
+    for (let axis of axes) {
+        // Project both rects onto the axis
+        const project = (vertices, a) => {
+            const dots = vertices.map(v => v.x * a.x + v.y * a.y);
+            return { min: Math.min(...dots), max: Math.max(...dots) };
+        };
+
+        const p1 = project(v1, axis);
+        const p2 = project(v2, axis);
+
+        // If there's no overlap on any axis, they don't intersect
+        if (p1.max < p2.min || p2.max < p1.min) return false;
+    }
+    return true;
 }
