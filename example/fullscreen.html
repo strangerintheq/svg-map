@@ -7,13 +7,19 @@
 <body style="margin: 0; overflow: hidden">
 <div id="map" style="width: 100vw; height: 100vh;"></div>
 <script src="../math.js"></script>
+<script src="../pbf.js"></script>
+<script src="../point.js"></script>
+<script src="../vector-tile.js"></script>
+<script src="../private.js"></script>
 <script type="module">
     import {SvgMap} from '../src/SvgMap.js';
     import {ImageTiledMapLayer} from '../src/layers/ImageTiledMapLayer.js';
+    import {VectorTiledMapLayer} from "../src/layers/VectorTiledMapLayer.js";
 
     // const osm = new OsmTileProvider();
     const map = new SvgMap("#map");
     map.addLayer(new ImageTiledMapLayer());
+    map.addLayer(new VectorTiledMapLayer());
 
 
 </script>

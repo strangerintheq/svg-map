@@ -3,7 +3,7 @@ import {MapState} from "./MapState.js";
 import {MapInteraction} from "./MapInteraction.js";
 
 const debug = {
-    viewportPad: 100
+    viewportPad: 0
 }
 
 export class SvgMap {

@@ -9,7 +9,7 @@ export class ImageTiledMapLayer extends TiledMapLayer {
         super();
     }
 
-    createTile(z, x, y) {
+    createTile(mapState, z, x, y) {
         let img = document.createElementNS("http://www.w3.org/2000/svg", "image");
         img.setAttribute("href", arcGisLoadFn(z,x,y));
         return img
