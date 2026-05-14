@@ -18,7 +18,7 @@ function svgMap(targetNode) {
             ]
         }
     };
-    let tilesCache = {}, repaintRequested, tileSize=256, viewport, w, h, x = 0, y = 0, z = 5;
+    let tilesCache = {}, repaintRequested, tileSize=512, viewport, w, h, x = 0, y = 0, z = 5;
     let svg, basemap, overlay, tmp, gui;
     let clickCallbackFn;
     init()

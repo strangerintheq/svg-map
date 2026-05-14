@@ -18,11 +18,11 @@
     let mvt = (z, x, y) => `https://api.maptiler.com/tiles/v3/${z}/${x}/${y}.pbf?key=${maptiler_api_key}`
 
     function vectorRasterizer(url) {
-        let size = 256
+        let size = 512
         let img = document.createElementNS("http://www.w3.org/2000/svg", "svg")
         img.setAttribute("width", size)
         img.setAttribute("height", size)
-        img.setAttribute("viewBox", "0,0,256,256")
+        img.setAttribute("viewBox", [0,0,size,size])
 
         let colors = {
             crop: "#ffffff",
@@ -98,7 +98,7 @@
     map.tiles(mvt, 15, vectorRasterizer)
     // map.tiles(arcGisLoadFn)
     map.setCenter(60, 30.2, 5);
-    map.setHeading(45)
+    // map.setHeading(45)
     map.add(`<polyline data-points='[[60,30.2],[60,130.2]]' fill='none' stroke-width='2' stroke='red'></polyline>`)
     map.onClick((ll) => {
         console.log(ll);
